@@ -1,0 +1,28 @@
+# Ignore node_modules folder
+node_modules/
+
+# Ignore log files
+*.log
+.history
+# Ignore the build directory
+dist/
+.vinxi/
+.output/
+
+# Ignore IDE specific files
+.idea/
+*.iml
+.next/
+package-lock.json
+yarn.lock
+node_modules
+.history
+.DS_Store
+
+# Sentry Config File
+.sentryclirc
+
+# Sentry Config File
+.env.sentry-build-plugin
+.env.local
+.zed/
