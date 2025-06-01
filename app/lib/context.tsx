@@ -1,5 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import * as React from 'react'
 import { RedisConnection } from './types'
+
+const { createContext, useContext, useState, useEffect } = React
 
 interface RedisContextType {
   activeConnection: RedisConnection | null
@@ -16,7 +18,7 @@ interface RedisContextType {
 const RedisContext = createContext<RedisContextType | undefined>(undefined)
 
 interface RedisProviderProps {
-  children: ReactNode
+  children: React.ReactNode
 }
 
 export function RedisProvider({ children }: RedisProviderProps) {
@@ -75,10 +77,10 @@ export function RedisProvider({ children }: RedisProviderProps) {
     clearError,
   }
 
-  return (
-    <RedisContext.Provider value={value}>
-      {children}
-    </RedisContext.Provider>
+  return React.createElement(
+    RedisContext.Provider,
+    { value: value },
+    children
   )
 }
 

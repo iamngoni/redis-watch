@@ -1,12 +1,12 @@
-import type { ReactNode } from 'react'
+import * as React from 'react'
 import {
     Outlet,
     createRootRoute,
     HeadContent,
     Scripts,
 } from '@tanstack/react-router'
-import css from '../global.css?url'
 import { seo } from '../../utils/seo'
+import '../global.css'
 
 export const Route = createRootRoute({
     head: () => ({
@@ -26,7 +26,6 @@ export const Route = createRootRoute({
             }),
         ],
         links: [
-            { rel: 'stylesheet', href: css },
             {
                 rel: 'preconnect',
                 href: 'https://fonts.googleapis.com',
@@ -46,23 +45,27 @@ export const Route = createRootRoute({
 })
 
 function RootComponent() {
-    return (
-        <RootDocument>
-            <Outlet />
-        </RootDocument>
+    return React.createElement(
+        RootDocument,
+        null,
+        React.createElement(Outlet)
     )
 }
 
-function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
-    return (
-        <html lang="en">
-            <head>
-                <HeadContent />
-            </head>
-            <body className="min-h-screen">
-                {children}
-                <Scripts />
-            </body>
-        </html>
+function RootDocument({ children }: Readonly<{ children: React.ReactNode }>) {
+    return React.createElement(
+        "html",
+        { lang: "en" },
+        React.createElement(
+            "head",
+            null,
+            React.createElement(HeadContent)
+        ),
+        React.createElement(
+            "body",
+            { className: "min-h-screen" },
+            children,
+            React.createElement(Scripts)
+        )
     )
 }

@@ -18,11 +18,12 @@ function Badge({ className, variant = 'default', ...props }: BadgeProps) {
     info: "border-transparent bg-blue-100 text-blue-800",
   }
 
-  return (
-    <div 
-      className={cn(baseClasses, variantClasses[variant], className)} 
-      {...props} 
-    />
+  return React.createElement(
+    "div",
+    {
+      className: cn(baseClasses, variantClasses[variant], className),
+      ...props
+    }
   )
 }
 

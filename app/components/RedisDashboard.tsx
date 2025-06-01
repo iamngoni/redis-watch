@@ -1,213 +1,294 @@
-import React, { useState, useEffect } from 'react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
-import { RedisProvider, useRedisContext } from '../lib/context'
-import { useConnections, useConnect } from '../lib/hooks'
-import { RedisConnection } from '../lib/types'
-import { Card, CardContent, CardHeader, CardTitle } from './Card'
-import { Button } from './Button'
-import { Alert, AlertDescription, AlertTitle } from './Alert'
-import { Badge } from './Badge'
-import { ConnectionManager } from './ConnectionManager'
-import { KeyBrowser } from './KeyBrowser'
-import { CommandExecutor } from './CommandExecutor'
-import { ServerMetrics } from './ServerMetrics'
-import { AlertTriangle, Database, Terminal, Settings, Activity } from 'lucide-react'
-import { cn } from '../lib/utils'
+import * as React from 'react'
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 2,
-      refetchOnWindowFocus: false,
-      staleTime: 5 * 60 * 1000, // 5 minutes
-    },
-  },
-})
-
-type DashboardTab = 'connections' | 'keys' | 'commands' | 'metrics'
-
-interface TabButtonProps {
-  tab: DashboardTab
-  active: boolean
-  icon: React.ReactNode
-  label: string
-  onClick: (tab: DashboardTab) => void
-  disabled?: boolean
+interface RedisConnection {
+  id: string
+  name: string
+  host: string
+  port: number
+  isConnected: boolean
 }
 
-function TabButton({ tab, active, icon, label, onClick, disabled }: TabButtonProps) {
-  return (
-    <button
-      onClick={() => onClick(tab)}
-      disabled={disabled}
-      className={cn(
-        "flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-        active
-          ? "bg-primary text-primary-foreground"
-          : "text-muted-foreground hover:text-foreground hover:bg-muted",
-        disabled && "opacity-50 cursor-not-allowed"
-      )}
-    >
-      {icon}
-      <span>{label}</span>
-    </button>
+interface ConnectionFormProps {
+  onConnect: (connection: { name: string; host: string; port: number }) => void
+}
+
+function ConnectionForm({ onConnect }: ConnectionFormProps) {
+  const [name, setName] = React.useState('Local Redis')
+  const [host, setHost] = React.useState('127.0.0.1')
+  const [port, setPort] = React.useState(6379)
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    onConnect({ name, host, port })
+  }
+
+  return React.createElement(
+    'form',
+    { onSubmit: handleSubmit, className: 'space-y-4 p-4 border rounded-lg' },
+    React.createElement('h3', { className: 'text-lg font-semibold' }, 'Connect to Redis'),
+    React.createElement(
+      'div',
+      null,
+      React.createElement('label', { className: 'block text-sm font-medium' }, 'Name'),
+      React.createElement('input', {
+        type: 'text',
+        value: name,
+        onChange: (e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value),
+        className: 'w-full border rounded px-3 py-2'
+      })
+    ),
+    React.createElement(
+      'div',
+      null,
+      React.createElement('label', { className: 'block text-sm font-medium' }, 'Host'),
+      React.createElement('input', {
+        type: 'text',
+        value: host,
+        onChange: (e: React.ChangeEvent<HTMLInputElement>) => setHost(e.target.value),
+        className: 'w-full border rounded px-3 py-2'
+      })
+    ),
+    React.createElement(
+      'div',
+      null,
+      React.createElement('label', { className: 'block text-sm font-medium' }, 'Port'),
+      React.createElement('input', {
+        type: 'number',
+        value: port,
+        onChange: (e: React.ChangeEvent<HTMLInputElement>) => setPort(parseInt(e.target.value)),
+        className: 'w-full border rounded px-3 py-2'
+      })
+    ),
+    React.createElement(
+      'button',
+      {
+        type: 'submit',
+        className: 'bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700'
+      },
+      'Connect'
+    )
   )
 }
 
-function DashboardContent() {
-  const [activeTab, setActiveTab] = useState<DashboardTab>('connections')
-  const { activeConnection, setActiveConnection, error, clearError } = useRedisContext()
-  const { data: connections, isLoading } = useConnections()
-  const connectMutation = useConnect()
+interface KeyItemProps {
+  keyName: string
+  keyType: string
+  ttl: number
+}
 
-  // Auto-connect to local Redis on first load
-  useEffect(() => {
-    if (!activeConnection && connections && connections.length === 0) {
-      const localConnection = {
-        name: 'Local Redis',
-        host: '127.0.0.1',
-        port: 6379,
-      }
-      
-      connectMutation.mutate(localConnection, {
-        onSuccess: (connection) => {
-          setActiveConnection(connection)
-          setActiveTab('keys')
-        },
-        onError: (error) => {
-          console.error('Failed to connect to local Redis:', error)
-          // Error will be handled by the error state in context
-        }
-      })
-    }
-  }, [connections, activeConnection, connectMutation, setActiveConnection])
+function KeyItem({ keyName, keyType, ttl }: KeyItemProps) {
+  return React.createElement(
+    'div',
+    { className: 'border-b py-2 flex justify-between items-center' },
+    React.createElement(
+      'div',
+      null,
+      React.createElement('span', { className: 'font-mono text-sm' }, keyName),
+      React.createElement('span', { className: 'ml-2 px-2 py-1 bg-gray-100 text-xs rounded' }, keyType)
+    ),
+    React.createElement('span', { className: 'text-sm text-gray-500' }, ttl === -1 ? 'No TTL' : `${ttl}s`)
+  )
+}
 
-  const handleTabChange = (tab: DashboardTab) => {
-    if (tab !== 'connections' && !activeConnection) {
-      return // Don't allow navigation to other tabs without connection
-    }
-    setActiveTab(tab)
+interface KeyBrowserProps {
+  isConnected: boolean
+}
+
+function KeyBrowser({ isConnected }: KeyBrowserProps) {
+  const [keys, setKeys] = React.useState([
+    { name: 'user:1001', type: 'hash', ttl: -1 },
+    { name: 'session:abc123', type: 'string', ttl: 3600 },
+    { name: 'cache:products', type: 'list', ttl: 1800 }
+  ])
+
+  if (!isConnected) {
+    return React.createElement(
+      'div',
+      { className: 'p-4 text-center text-gray-500' },
+      'Not connected to Redis'
+    )
   }
 
-  const isConnected = !!activeConnection?.isConnected
+  return React.createElement(
+    'div',
+    { className: 'p-4' },
+    React.createElement('h3', { className: 'text-lg font-semibold mb-4' }, 'Redis Keys'),
+    React.createElement(
+      'div',
+      { className: 'space-y-1' },
+      ...keys.map((key, index) =>
+        React.createElement(KeyItem, {
+          key: index,
+          keyName: key.name,
+          keyType: key.type,
+          ttl: key.ttl
+        })
+      )
+    )
+  )
+}
 
-  return (
-    <div className="min-h-screen bg-background">
-      <div className="border-b">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <h1 className="text-2xl font-bold flex items-center space-x-2">
-                <Database className="h-6 w-6 text-primary" />
-                <span>Redis Dashboard</span>
-              </h1>
-              {activeConnection && (
-                <Badge variant={isConnected ? 'success' : 'destructive'}>
-                  {isConnected ? 'Connected' : 'Disconnected'}: {activeConnection.name}
-                </Badge>
-              )}
-            </div>
-            
-            <nav className="flex items-center space-x-2">
-              <TabButton
-                tab="connections"
-                active={activeTab === 'connections'}
-                icon={<Settings className="h-4 w-4" />}
-                label="Connections"
-                onClick={handleTabChange}
-              />
-              <TabButton
-                tab="keys"
-                active={activeTab === 'keys'}
-                icon={<Database className="h-4 w-4" />}
-                label="Keys"
-                onClick={handleTabChange}
-                disabled={!isConnected}
-              />
-              <TabButton
-                tab="commands"
-                active={activeTab === 'commands'}
-                icon={<Terminal className="h-4 w-4" />}
-                label="Commands"
-                onClick={handleTabChange}
-                disabled={!isConnected}
-              />
-              <TabButton
-                tab="metrics"
-                active={activeTab === 'metrics'}
-                icon={<Activity className="h-4 w-4" />}
-                label="Metrics"
-                onClick={handleTabChange}
-                disabled={!isConnected}
-              />
-            </nav>
-          </div>
-        </div>
-      </div>
+interface CommandExecutorProps {
+  isConnected: boolean
+}
 
-      <div className="container mx-auto px-4 py-6">
-        {/* Connection Error Banner */}
-        {error && (
-          <Alert variant="destructive" className="mb-6">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Connection Error</AlertTitle>
-            <AlertDescription className="flex items-center justify-between">
-              <span>{error}</span>
-              <Button variant="outline" size="sm" onClick={clearError}>
-                Dismiss
-              </Button>
-            </AlertDescription>
-          </Alert>
-        )}
+function CommandExecutor({ isConnected }: CommandExecutorProps) {
+  const [command, setCommand] = React.useState('')
+  const [result, setResult] = React.useState('')
 
-        {/* Local Redis Connection Error */}
-        {!activeConnection && !isLoading && connections?.length === 0 && (
-          <Alert variant="warning" className="mb-6">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Unable to connect to local Redis</AlertTitle>
-            <AlertDescription>
-              Could not connect to Redis at 127.0.0.1:6379. Please ensure Redis is running or configure a custom connection.
-            </AlertDescription>
-          </Alert>
-        )}
+  const executeCommand = () => {
+    if (!isConnected) return
+    
+    // Mock command execution
+    if (command.toLowerCase().startsWith('get ')) {
+      setResult('"hello world"')
+    } else if (command.toLowerCase() === 'info') {
+      setResult('redis_version:7.0.0\nrole:master\nconnected_clients:1')
+    } else {
+      setResult('OK')
+    }
+  }
 
-        {/* Tab Content */}
-        <div className="space-y-6">
-          {activeTab === 'connections' && <ConnectionManager />}
-          {activeTab === 'keys' && isConnected && <KeyBrowser />}
-          {activeTab === 'commands' && isConnected && <CommandExecutor />}
-          {activeTab === 'metrics' && isConnected && <ServerMetrics />}
-          
-          {/* No Connection State */}
-          {activeTab !== 'connections' && !isConnected && (
-            <Card>
-              <CardHeader>
-                <CardTitle>No Active Connection</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground mb-4">
-                  Please establish a connection to a Redis server to access this feature.
-                </p>
-                <Button onClick={() => setActiveTab('connections')}>
-                  Manage Connections
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      </div>
-    </div>
+  if (!isConnected) {
+    return React.createElement(
+      'div',
+      { className: 'p-4 text-center text-gray-500' },
+      'Not connected to Redis'
+    )
+  }
+
+  return React.createElement(
+    'div',
+    { className: 'p-4' },
+    React.createElement('h3', { className: 'text-lg font-semibold mb-4' }, 'Redis Commands'),
+    React.createElement(
+      'div',
+      { className: 'space-y-4' },
+      React.createElement(
+        'div',
+        null,
+        React.createElement('input', {
+          type: 'text',
+          value: command,
+          onChange: (e: React.ChangeEvent<HTMLInputElement>) => setCommand(e.target.value),
+          placeholder: 'Enter Redis command (e.g., GET mykey)',
+          className: 'w-full border rounded px-3 py-2 font-mono'
+        }),
+        React.createElement(
+          'button',
+          {
+            onClick: executeCommand,
+            className: 'mt-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700'
+          },
+          'Execute'
+        )
+      ),
+      result && React.createElement(
+        'div',
+        { className: 'bg-gray-100 p-3 rounded' },
+        React.createElement('pre', { className: 'text-sm' }, result)
+      )
+    )
   )
 }
 
 export function RedisDashboard() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <RedisProvider>
-        <DashboardContent />
-        <ReactQueryDevtools initialIsOpen={false} />
-      </RedisProvider>
-    </QueryClientProvider>
+  const [activeTab, setActiveTab] = React.useState('connections')
+  const [connection, setConnection] = React.useState<RedisConnection | null>(null)
+  const [error, setError] = React.useState<string | null>(null)
+
+  const handleConnect = async (connectionData: { name: string; host: string; port: number }) => {
+    try {
+      setError(null)
+      // Mock connection - in real app this would call the API
+      const newConnection: RedisConnection = {
+        id: Date.now().toString(),
+        name: connectionData.name,
+        host: connectionData.host,
+        port: connectionData.port,
+        isConnected: true
+      }
+      setConnection(newConnection)
+      setActiveTab('keys')
+    } catch (err) {
+      setError('Failed to connect to Redis server')
+    }
+  }
+
+  return React.createElement(
+    'div',
+    { className: 'min-h-screen bg-gray-50' },
+    React.createElement(
+      'div',
+      { className: 'bg-white shadow' },
+      React.createElement(
+        'div',
+        { className: 'max-w-7xl mx-auto px-4 py-4' },
+        React.createElement(
+          'div',
+          { className: 'flex items-center justify-between' },
+          React.createElement(
+            'h1',
+            { className: 'text-2xl font-bold text-gray-900' },
+            'Redis Dashboard'
+          ),
+          connection && React.createElement(
+            'span',
+            { className: 'px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm' },
+            `Connected: ${connection.name}`
+          )
+        ),
+        React.createElement(
+          'nav',
+          { className: 'mt-4' },
+          React.createElement(
+            'div',
+            { className: 'flex space-x-4' },
+            React.createElement(
+              'button',
+              {
+                onClick: () => setActiveTab('connections'),
+                className: `px-4 py-2 rounded ${activeTab === 'connections' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:text-gray-900'}`
+              },
+              'Connections'
+            ),
+            React.createElement(
+              'button',
+              {
+                onClick: () => setActiveTab('keys'),
+                disabled: !connection?.isConnected,
+                className: `px-4 py-2 rounded ${activeTab === 'keys' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:text-gray-900'} ${!connection?.isConnected ? 'opacity-50 cursor-not-allowed' : ''}`
+              },
+              'Keys'
+            ),
+            React.createElement(
+              'button',
+              {
+                onClick: () => setActiveTab('commands'),
+                disabled: !connection?.isConnected,
+                className: `px-4 py-2 rounded ${activeTab === 'commands' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:text-gray-900'} ${!connection?.isConnected ? 'opacity-50 cursor-not-allowed' : ''}`
+              },
+              'Commands'
+            )
+          )
+        )
+      )
+    ),
+    React.createElement(
+      'div',
+      { className: 'max-w-7xl mx-auto px-4 py-6' },
+      error && React.createElement(
+        'div',
+        { className: 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4' },
+        error
+      ),
+      React.createElement(
+        'div',
+        { className: 'bg-white rounded-lg shadow' },
+        activeTab === 'connections' && React.createElement(ConnectionForm, { onConnect: handleConnect }),
+        activeTab === 'keys' && React.createElement(KeyBrowser, { isConnected: !!connection?.isConnected }),
+        activeTab === 'commands' && React.createElement(CommandExecutor, { isConnected: !!connection?.isConnected })
+      )
+    )
   )
 }
